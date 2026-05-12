@@ -1,0 +1,57 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'docs/**'
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+
+  ci:
+    name: Run CI
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      node-version: '20'
+      upload-coverage: true
+    secrets: inherit
+
+  ci-status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: ci
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Report result
+        run: |
+          echo "================================"
+          echo "  CI Pipeline Summary"
+          echo "================================"
+          echo "  Workflow : ${{ github.workflow }}"
+          echo "  Branch   : ${{ github.ref_name }}"
+          echo "  Commit   : ${{ github.sha }}"
+          echo "  Actor    : ${{ github.actor }}"
+          echo "  CI Result: ${{ needs.ci.result }}"
+          echo "================================"
+          if [ "${{ needs.ci.result }}" != "success" ]; then
+            echo "  FAILED — check logs above"
+            exit 1
+          else
+            echo "  All checks passed"
+          fi

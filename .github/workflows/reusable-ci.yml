@@ -1,0 +1,61 @@
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+      upload-coverage:
+        description: 'Upload coverage report as artifact'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      tests-passed:
+        description: 'Whether all tests passed'
+        value: ${{ jobs.test.outputs.passed }}
+
+permissions:
+  contents: read
+
+jobs:
+
+  lint:
+    name: Lint (ESLint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup Node project
+        uses: ./.github/actions/setup-node-project
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Run ESLint
+        run: npm run lint
+
+  test:
+    name: Test (Jest + Coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      passed: ${{ steps.test-run.outcome == 'success' }}
+    steps:
+      - name: Setup Node project
+        uses: ./.github/actions/setup-node-project
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Run tests with coverage
+        id: test-run
+        run: npm test
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.upload-coverage }}
+        with:
+          name: coverage-report-node${{ inputs.node-version }}
+          path: coverage/
+          retention-days: 14
