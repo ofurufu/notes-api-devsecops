@@ -44,7 +44,7 @@ jobs:
       passed: ${{ steps.test-run.outcome == 'success' }}
     steps:
       - name: Setup Node project
-        uses: ./.github/actions/setup-node-project
+        uses: ./.github/actions/setup-node-project/actions.yml
         with:
           node-version: ${{ inputs.node-version }}
 
