@@ -28,7 +28,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Setup Node project
+
+      # Checkout MUST come first — before the local composite action is referenced.
+      # GitHub needs the repo on disk to find .github/actions/setup-node-project/action.yml
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # NOW it's safe to reference the local composite action
+      - name: Setup Node.js and install deps
         uses: ./.github/actions/setup-node-project
         with:
           node-version: ${{ inputs.node-version }}
@@ -43,8 +50,13 @@ jobs:
     outputs:
       passed: ${{ steps.test-run.outcome == 'success' }}
     steps:
-      - name: Setup Node project
-        uses: ./.github/actions/setup-node-project/actions.yml
+
+      # Same rule — checkout before local action
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js and install deps
+        uses: ./.github/actions/setup-node-project
         with:
           node-version: ${{ inputs.node-version }}
 
