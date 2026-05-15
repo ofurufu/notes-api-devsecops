@@ -22,7 +22,7 @@ runs:
 
     - name: Install Node.js ${{ inputs.node-version }}
       id: setup
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'

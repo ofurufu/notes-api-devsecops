@@ -21,6 +21,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
 
   lint:
@@ -32,7 +35,7 @@ jobs:
       # Checkout MUST come first — before the local composite action is referenced.
       # GitHub needs the repo on disk to find .github/actions/setup-node-project/action.yml
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # NOW it's safe to reference the local composite action
       - name: Setup Node.js and install deps
@@ -53,7 +56,7 @@ jobs:
 
       # Same rule — checkout before local action
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js and install deps
         uses: ./.github/actions/setup-node-project
@@ -65,7 +68,7 @@ jobs:
         run: npm test
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: ${{ always() && inputs.upload-coverage }}
         with:
           name: coverage-report-node${{ inputs.node-version }}
