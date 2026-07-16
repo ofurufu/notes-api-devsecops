@@ -1,0 +1,26 @@
+# Dependencies — will be installed fresh inside Docker
+node_modules
+
+# Git history — not needed in image
+.git
+.gitignore
+
+# Test files — not needed in production image
+tests/
+coverage/
+*.test.js
+
+# CI/CD config — not part of the app
+.github/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+
+# Env files — NEVER bake secrets into images
+.env
+.env.*
+
+# Dev config
+eslint.config.mjs

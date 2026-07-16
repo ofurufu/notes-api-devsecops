@@ -1,0 +1,45 @@
+{
+	"name": "notes-api-devsecops",
+	"version": "1.0.0",
+	"description": "A production-grade Notes REST API with a DevSecOps CI/CD pipeline",
+	"main": "src/server.js",
+	"scripts": {
+		"start": "node src/server.js",
+		"dev": "node --watch src/server.js",
+		"test": "jest --coverage --forceExit",
+		"test:ci": "jest --coverage --forceExit --ci",
+		"lint": "eslint src/ tests/",
+		"lint:fix": "eslint src/ tests/ --fix"
+	},
+	"jest": {
+		"testEnvironment": "node",
+		"collectCoverageFrom": [
+			"src/**/*.js"
+		],
+		"coverageThresholds": {
+			"global": {
+				"lines": 80,
+				"functions": 80,
+				"branches": 70,
+				"statements": 80
+			}
+		}
+	},
+	"keywords": [
+		"notes",
+		"api",
+		"express",
+		"devsecops"
+	],
+	"author": "YOUR_NAME",
+	"license": "MIT",
+	"dependencies": {
+		"express": "^5.2.1"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"eslint": "^10.7.0",
+		"jest": "^30.4.2",
+		"supertest": "^7.2.2"
+	}
+}
