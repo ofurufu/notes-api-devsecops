@@ -3,6 +3,8 @@
 const express = require('express');
 const router = express.Router();
 
+const unusedVariable = 'this should fail lint';
+
 // In-memory store — an array of note objects.
 // In a real app this would be a database call.
 // Using a module-level variable means tests can reset it between runs.
