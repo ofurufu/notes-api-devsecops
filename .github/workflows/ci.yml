@@ -1,0 +1,71 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+  
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package*.json'
+      - 'Dockerfile'
+      - '.github/workflows/**'
+      - '.github/actions/**'
+
+  # Run on every pull request targeting main.
+  # This is the gate that prevents broken code from merging.
+  pull_request:
+    branches:
+      - main
+    # These are the PR event types that should trigger CI:
+    #   opened       → new PR created
+    #   synchronize  → new commit pushed to an existing PR branch
+    #   reopened     → a closed PR was reopened
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package*.json'
+      - 'Dockerfile'
+      - '.github/workflows/**'
+      - '.github/actions/**'
+
+  # Allow manual triggering from the GitHub Actions UI.
+  # Useful for debugging or re-running CI without making a commit.
+  workflow_dispatch:
+    inputs:
+      node-versions:
+        description: 'Node.js versions to test (JSON array)'
+        required: false
+        default: '["20", "22"]'
+
+
+permissions:
+  contents: read
+
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # Call the reusable CI workflow.
+  # 'uses' at the job level (not step level) is what invokes a reusable workflow.
+  # The path must be relative to the repo root, prefixed with ./
+  ci:
+    name: 'CI Pipeline'
+    uses: ./.github/workflows/reusable-ci.yml
+
+    # Pass inputs to the reusable workflow.
+    # workflow_dispatch lets the user override the matrix from the UI.
+    # Push/PR events use the default.
+    with:
+      node-version-matrix: ${{ github.event.inputs.node-versions || '["20", "22"]' }}
+      node-version-lint: '20'
+      run-coverage: true
+
+    # Secrets would be passed here if reusable-ci.yml needed any.
+    # Currently it doesn't, so this block is omitted.
+    # secrets:
+    #   some-secret: ${{ secrets.SOME_SECRET }}

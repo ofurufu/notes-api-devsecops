@@ -1,0 +1,88 @@
+name: Reusable CI
+on:
+  workflow_call:
+    inputs:
+
+      node-version-matrix:
+        description: >
+          JSON array of Node.js versions to test against.
+          Must be a valid JSON string, e.g. '["20", "22"]'
+        type: string
+        required: false
+        default: '["20", "22"]'
+
+      node-version-lint:
+        description: 'Node.js version to use for the lint job'
+        type: string
+        required: false
+        default: '20'
+
+      run-coverage:
+        description: 'Whether to upload coverage artifacts after tests'
+        type: boolean
+        required: false
+        default: true
+permissions:
+  contents: read
+
+jobs:
+
+  lint:
+    name: 'Lint (ESLint)'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Use our composite action — one line replaces checkout + setup + npm ci
+      - name: Setup app
+        uses: ./.github/actions/setup-node-app
+        with:
+          node-version: ${{ inputs.node-version-lint }}
+      - name: Run ESLint
+        run: npm run lint -- --max-warnings=0
+
+  test:
+    name: 'Test (Node ${{ matrix.node-version }})'
+    runs-on: ubuntu-latest
+    needs: lint                          # Wait for lint to pass first
+
+    strategy:
+      matrix:
+        # fromJSON parses the input string into an actual array.
+        # This lets the caller control which versions to test
+        # without changing this file.
+        node-version: ${{ fromJSON(inputs.node-version-matrix) }}
+
+      # IMPORTANT: Don't cancel all matrix jobs if one fails.
+      # With fail-fast: true (the default), if Node 20 fails,
+      # Node 22 is cancelled immediately — you lose that signal.
+      # With fail-fast: false, all versions run to completion,
+      # so you see the full picture of what broke and where.
+      fail-fast: false
+
+    steps:
+      - name: Setup app
+        uses: ./.github/actions/setup-node-app
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # Run tests with --ci flag (set in package.json test:ci script).
+      # --ci disables interactive watch mode, which would hang in a pipeline.
+      # --coverage generates the coverage report.
+      # --forceExit ensures Jest exits after tests complete,
+      #   even if there are hanging async handles.
+      - name: Run tests with coverage
+        run: npm run test:ci
+
+      # Upload coverage as an artifact so you can download and inspect it.
+      # Each matrix version gets its own named artifact.
+      # We only upload if run-coverage input is true (default: true).
+      - name: Upload coverage report
+        if: ${{ inputs.run-coverage }}
+        uses: actions/upload-artifact@v4
+        with:
+          # Include node version in artifact name so they don't overwrite each other
+          name: coverage-node-${{ matrix.node-version }}
+          path: coverage/
+          # Keep coverage reports for 7 days — enough to investigate failures
+          # Default is 90 days, which wastes storage for transient CI data
+          retention-days: 7
