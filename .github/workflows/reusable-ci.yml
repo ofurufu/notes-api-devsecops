@@ -32,6 +32,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       # Use our composite action — one line replaces checkout + setup + npm ci
       - name: Setup app
         uses: ./.github/actions/setup-node-app
@@ -60,6 +63,9 @@ jobs:
       fail-fast: false
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Setup app
         uses: ./.github/actions/setup-node-app
         with:
