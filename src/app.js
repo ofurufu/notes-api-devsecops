@@ -44,7 +44,7 @@ app.use((_req, res) => {
 
 // Express calls this when next(error) is called anywhere
 // The four-parameter signature is required — Express detects it by arity
-// eslint-disable-next-line no-unused-vars
+ 
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err.message);
   res.status(500).json({
