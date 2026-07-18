@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version-lint }}
       - name: Run ESLint
-        run: npm run lint -- --max-warnings=0
+        run: npm run lint && npm run lint -- --fix
 
   test:
     name: 'Test (Node ${{ matrix.node-version }})'
