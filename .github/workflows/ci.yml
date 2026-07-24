@@ -71,15 +71,14 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# ─── Jobs ─────────────────────────────────────────────────────────────────────
-
 jobs:
   ci:
     name: 'CI Pipeline'
     uses: ./.github/workflows/reusable-ci.yml
     with:
-      node-version-matrix: ${{ github.event.inputs.node-versions || '["20", "22"]' }}
+      node-version-matrix: '["20", "22"]'   # hardcoded — safe for all triggers
       node-version-lint: '20'
       run-coverage: true
-      audit-level: 'high'    # Fail CI on High or Critical vulnerabilities
+      audit-level: 'high'
+  # Fail CI on High or Critical vulnerabilities
     # No secrets block needed — reusable-ci.yml doesn't require secrets
