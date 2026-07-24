@@ -1,0 +1,19 @@
+# .trivyignore
+#
+# Suppress Trivy findings that have been reviewed and accepted.
+#
+# FORMAT: One CVE ID per line.
+# Example: CVE-2023-12345
+#
+# Before adding a CVE here, document WHY it's accepted:
+#   - Is there no fix available?
+#   - Is the vulnerable code path unreachable in this application?
+#   - Has a workaround been applied?
+#
+# Review suppressed CVEs quarterly.
+#
+# ─── Currently suppressed ────────────────────────────────────────────────────
+#
+# (none yet — clean slate)
+#
+# ─────────────────────────────────────────────────────────────────────────────

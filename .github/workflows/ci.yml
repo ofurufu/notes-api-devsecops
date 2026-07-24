@@ -1,37 +1,46 @@
+# .github/workflows/ci.yml
+#
+# Main CI Entry Point — Updated in Phase 3
+#
+# Change from Phase 2:
+#   Added 'security-events: write' permission so the security-scan
+#   job in reusable-ci.yml can upload SARIF results to GitHub.
+#
+# Triggered on:
+#   - Push to main (catches direct commits and merged PRs)
+#   - Pull request targeting main (the merge gate)
+#   - Manual trigger from GitHub Actions UI
+
 name: CI
+
+# ─── Triggers ─────────────────────────────────────────────────────────────────
+
 on:
   push:
     branches:
       - main
-  
     paths:
       - 'src/**'
       - 'tests/**'
       - 'package*.json'
       - 'Dockerfile'
+      - '.trivyignore'          # Re-run if suppressions change
       - '.github/workflows/**'
       - '.github/actions/**'
 
-  # Run on every pull request targeting main.
-  # This is the gate that prevents broken code from merging.
   pull_request:
     branches:
       - main
-    # These are the PR event types that should trigger CI:
-    #   opened       → new PR created
-    #   synchronize  → new commit pushed to an existing PR branch
-    #   reopened     → a closed PR was reopened
     types: [opened, synchronize, reopened]
     paths:
       - 'src/**'
       - 'tests/**'
       - 'package*.json'
       - 'Dockerfile'
+      - '.trivyignore'
       - '.github/workflows/**'
       - '.github/actions/**'
 
-  # Allow manual triggering from the GitHub Actions UI.
-  # Useful for debugging or re-running CI without making a commit.
   workflow_dispatch:
     inputs:
       node-versions:
@@ -39,33 +48,38 @@ on:
         required: false
         default: '["20", "22"]'
 
+# ─── Permissions ──────────────────────────────────────────────────────────────
+# Updated in Phase 3: added security-events: write.
+#
+# Why here AND in reusable-ci.yml?
+#   - ci.yml (caller) must GRANT the permission budget
+#   - reusable-ci.yml (callee) must DECLARE it uses the permission
+#   Both are required. One without the other doesn't work.
+#
+# Why not just set permissions: write-all here?
+#   - That would grant every permission to every job.
+#   - If a step is compromised, it has maximum blast radius.
+#   - Declaring specific permissions limits what an attacker can do.
 
 permissions:
-  contents: read
+  contents: read            # Clone the repo
+  security-events: write    # Upload SARIF to GitHub Security tab
 
+# ─── Concurrency ──────────────────────────────────────────────────────────────
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-jobs:
+# ─── Jobs ─────────────────────────────────────────────────────────────────────
 
-  # Call the reusable CI workflow.
-  # 'uses' at the job level (not step level) is what invokes a reusable workflow.
-  # The path must be relative to the repo root, prefixed with ./
+jobs:
   ci:
     name: 'CI Pipeline'
     uses: ./.github/workflows/reusable-ci.yml
-
-    # Pass inputs to the reusable workflow.
-    # workflow_dispatch lets the user override the matrix from the UI.
-    # Push/PR events use the default.
     with:
       node-version-matrix: ${{ github.event.inputs.node-versions || '["20", "22"]' }}
       node-version-lint: '20'
       run-coverage: true
-
-    # Secrets would be passed here if reusable-ci.yml needed any.
-    # Currently it doesn't, so this block is omitted.
-    # secrets:
-    #   some-secret: ${{ secrets.SOME_SECRET }}
+      audit-level: 'high'    # Fail CI on High or Critical vulnerabilities
+    # No secrets block needed — reusable-ci.yml doesn't require secrets

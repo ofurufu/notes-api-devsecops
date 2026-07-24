@@ -1,18 +1,38 @@
+# .github/workflows/reusable-ci.yml
+#
+# Reusable CI Workflow — Updated in Phase 3
+#
+# Job execution order:
+#
+#   lint ──────┐
+#   audit ─────┼──▶ test (Node 20)
+#   trivy-scan ┘    test (Node 22)
+#
+# lint, audit, and trivy-scan all run in parallel.
+# test waits for all three to pass before starting.
+#
+# This means:
+#   - If lint fails  → tests are skipped
+#   - If audit fails → tests are skipped (critical/high vulnerability found)
+#   - If trivy fails → tests are skipped
+#   - If all pass    → tests run in parallel across Node versions
+
 name: Reusable CI
+
+# ─── Trigger ─────────────────────────────────────────────────────────────────
+
 on:
   workflow_call:
     inputs:
 
       node-version-matrix:
-        description: >
-          JSON array of Node.js versions to test against.
-          Must be a valid JSON string, e.g. '["20", "22"]'
+        description: 'JSON array of Node.js versions to test against'
         type: string
         required: false
         default: '["20", "22"]'
 
       node-version-lint:
-        description: 'Node.js version to use for the lint job'
+        description: 'Node.js version to use for lint and audit jobs'
         type: string
         required: false
         default: '20'
@@ -22,73 +42,192 @@ on:
         type: boolean
         required: false
         default: true
+
+      audit-level:
+        description: 'npm audit failure threshold (low/moderate/high/critical)'
+        type: string
+        required: false
+        default: 'high'
+        # 'high' means: fail CI if any High or Critical vulnerabilities found
+        # 'critical' means: only fail on Critical
+        # For a new project 'high' is the right default.
+        # If you inherit a legacy codebase with many known issues,
+        # you might start with 'critical' and work your way down.
+
+# ─── Permissions ─────────────────────────────────────────────────────────────
+# Workflow-level default. Individual jobs that need more declare it themselves.
+# security-events: write is declared at the job level on security-scan only.
+
 permissions:
   contents: read
 
+# ─── Jobs ────────────────────────────────────────────────────────────────────
+
 jobs:
+
+  # ── Job 1: Lint ─────────────────────────────────────────────────────────────
+  # Unchanged from Phase 2.
 
   lint:
     name: 'Lint (ESLint)'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Use our composite action — one line replaces checkout + setup + npm ci
       - name: Setup app
         uses: ./.github/actions/setup-node-app
         with:
           node-version: ${{ inputs.node-version-lint }}
+
       - name: Run ESLint
-        run: npm run lint && npm run lint -- --fix
+        run: npm run lint -- --max-warnings=0
+
+  # ── Job 2: Dependency Audit ──────────────────────────────────────────────────
+  # Scans package-lock.json against the npm advisory database.
+  # Fails if any vulnerability at or above audit-level is found.
+  #
+  # This is separate from Trivy because:
+  #   - npm audit checks npm's advisory database specifically
+  #   - It's authoritative for npm packages
+  #   - It's extremely fast (network call, no local scanning)
+  #   - It can suggest fixes (npm audit fix)
+
+  audit:
+    name: 'Audit (npm)'
+    runs-on: ubuntu-latest
+
+    steps:
+      # We use the composite action here because npm audit reads package-lock.json,
+      # and we want to confirm the lockfile is consistent (npm ci validates this).
+      - name: Setup app
+        uses: ./.github/actions/setup-node-app
+        with:
+          node-version: ${{ inputs.node-version-lint }}
+
+      # npm audit exit codes:
+      #   0 — no vulnerabilities at or above the threshold
+      #   1 — vulnerabilities found at or above the threshold
+      #
+      # GitHub Actions treats any non-zero exit code as a step failure,
+      # which fails the job, which blocks downstream jobs that need this one.
+      - name: Run npm audit
+        run: npm audit --audit-level=${{ inputs.audit-level }}
+        # If this step fails, the error output shows:
+        #   - Package name and version with the vulnerability
+        #   - CVE ID and description
+        #   - Severity level
+        #   - Which of your packages depends on the vulnerable one
+        #   - Whether npm audit fix can resolve it automatically
+
+  # ── Job 3: Security Scan (Trivy) ────────────────────────────────────────────
+  # Scans the repository filesystem for vulnerabilities using Trivy.
+  # Results are uploaded as SARIF to GitHub's Security tab.
+  #
+  # This job does NOT fail CI on findings (exit-code: '0').
+  # Instead, it surfaces all findings visually in the Security tab.
+  #
+  # Why not fail on Trivy findings?
+  #   - npm audit already catches npm package vulnerabilities strictly
+  #   - Trivy on a filesystem scan can produce noise (especially on
+  #     transitive dependencies of devDependencies in Alpine base images)
+  #   - The SARIF upload gives you visibility without making CI permanently red
+  #     while you triage findings
+  #
+  # In Phase 5 (Docker), you'll also scan the built image — that scan is
+  # where you'd consider stricter exit codes because image vulnerabilities
+  # are closer to what actually runs in production.
+
+  security-scan:
+    name: 'Security Scan (Trivy)'
+    runs-on: ubuntu-latest
+
+    # This job needs security-events: write to upload SARIF to GitHub.
+    # We declare it here (job level) rather than workflow level so only
+    # this job has elevated permissions — principle of least privilege.
+    #
+    # IMPORTANT: The calling workflow (ci.yml) must also grant
+    # security-events: write, or this job-level declaration is ignored.
+    # You updated ci.yml to include it in Step 3.
+    permissions:
+      contents: read
+      security-events: write    # Required for upload-sarif action
+
+    steps:
+      # Trivy only needs the source files — not Node.js or node_modules.
+      # It reads package-lock.json directly to identify package versions.
+      # So we use actions/checkout directly, not our composite action.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Run Trivy filesystem scan.
+      #
+      # scan-type: 'fs'     → scan the local filesystem (not a Docker image)
+      # scan-ref: '.'       → start from the current directory
+      # format: 'sarif'     → output in SARIF format for GitHub Security tab
+      # output: file path   → write SARIF to this file
+      # severity:           → only report CRITICAL and HIGH findings
+      #                       (LOW and MEDIUM would create too much noise)
+      # exit-code: '0'      → don't fail the job even if findings are found
+      #                       (findings are surfaced via SARIF upload instead)
+      # ignore-unfixed:     → skip CVEs that have no fix available yet
+      #                       (you can't action these immediately anyway)
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
+
+      # Upload the SARIF file to GitHub's Security tab.
+      #
+      # if: always() is CRITICAL here.
+      # Without it, this step is skipped if the previous step fails.
+      # Since we're using exit-code: '0', Trivy won't fail — but the principle
+      # matters: you always want the SARIF uploaded, even if the scan itself
+      # had issues, because partial results are better than no results.
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          # Category label that appears in the Security tab.
+          # Useful when you have multiple scanners uploading SARIF.
+          category: 'trivy-filesystem'
+
+  # ── Job 4: Test (Matrix) ─────────────────────────────────────────────────────
+  # UPDATED: now depends on lint, audit, AND security-scan.
+  # Tests only run if all three security/quality gates pass.
 
   test:
     name: 'Test (Node ${{ matrix.node-version }})'
     runs-on: ubuntu-latest
-    needs: lint                          # Wait for lint to pass first
+
+    # Updated from Phase 2: was 'needs: lint'
+    # Now waits for all three parallel gate jobs.
+    needs: [lint, audit, security-scan]
 
     strategy:
       matrix:
-        # fromJSON parses the input string into an actual array.
-        # This lets the caller control which versions to test
-        # without changing this file.
         node-version: ${{ fromJSON(inputs.node-version-matrix) }}
-
-      # IMPORTANT: Don't cancel all matrix jobs if one fails.
-      # With fail-fast: true (the default), if Node 20 fails,
-      # Node 22 is cancelled immediately — you lose that signal.
-      # With fail-fast: false, all versions run to completion,
-      # so you see the full picture of what broke and where.
       fail-fast: false
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Setup app
         uses: ./.github/actions/setup-node-app
         with:
           node-version: ${{ matrix.node-version }}
 
-      # Run tests with --ci flag (set in package.json test:ci script).
-      # --ci disables interactive watch mode, which would hang in a pipeline.
-      # --coverage generates the coverage report.
-      # --forceExit ensures Jest exits after tests complete,
-      #   even if there are hanging async handles.
       - name: Run tests with coverage
         run: npm run test:ci
 
-      # Upload coverage as an artifact so you can download and inspect it.
-      # Each matrix version gets its own named artifact.
-      # We only upload if run-coverage input is true (default: true).
       - name: Upload coverage report
         if: ${{ inputs.run-coverage }}
         uses: actions/upload-artifact@v4
         with:
-          # Include node version in artifact name so they don't overwrite each other
           name: coverage-node-${{ matrix.node-version }}
           path: coverage/
-          # Keep coverage reports for 7 days — enough to investigate failures
-          # Default is 90 days, which wastes storage for transient CI data
           retention-days: 7
