@@ -1,0 +1,89 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+# Permissions 
+permissions:
+  contents: read
+  packages: write
+
+# Environment 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# Jobs
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+
+    steps:
+
+      # 1. Checkout 
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Checkout the specific commit that CI tested — not just HEAD.
+          # workflow_run gives us the head SHA from the triggering run.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      # 2. Log in to GHCR 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. Generate image metadata 
+      # docker/metadata-action generates tags and OCI-compliant labels
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Immutable SHA tag — 7 char short SHA, prefixed with 'sha-'
+            type=sha,prefix=sha-,format=short
+
+            # 'latest' tag — only on main branch (already guaranteed by trigger,
+            # but being explicit makes the intent clear)
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main' }}
+
+      # 4. Set up Docker Buildx 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 5. Build and push 
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .                              # Build context = repo root
+          file: ./Dockerfile                      # Explicit path to Dockerfile
+          push: true                              # Push after building (not just build)
+          tags: ${{ steps.meta.outputs.tags }}    # sha-abc1234 and latest
+          labels: ${{ steps.meta.outputs.labels }} # OCI labels from metadata-action
+          cache-from: type=gha                    # Restore from GHA cache
+          cache-to: type=gha,mode=max             # Save all layers to GHA cache
+          provenance: false
+
+      # 6. Print image digest 
+      - name: Print image digest
+        run: |
+          echo "Image pushed successfully!"
+          echo ""
+          echo "Registry:  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "Tags:      ${{ steps.meta.outputs.tags }}"
+          echo "Digest:    ${{ steps.build.outputs.digest }}"
+          echo ""
+          echo "Pull with:"
+          echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"

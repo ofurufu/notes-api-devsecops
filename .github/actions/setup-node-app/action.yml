@@ -1,36 +1,20 @@
 name: 'Setup Node App'
-description: 'Checkout code, configure Node.js, and install dependencies via npm ci'
-
+description: 'Setup Node.js application environment'
 
 inputs:
   node-version:
-    description: 'Node.js version to install (e.g. 20, 22)'
+    description: 'Node.js version to use'
     required: false
     default: '20'
 
-
-outputs:
-  cache-hit:
-    description: 'Whether the npm cache was restored (true/false)'
-    value: ${{ steps.setup-node.outputs.cache-hit }}
-
-
 runs:
   using: 'composite'
-
   steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-
-    - name: Set up Node.js ${{ inputs.node-version }}
-      id: setup-node                         # ID needed to expose cache-hit output
+    - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: 'npm'                         # Caches ~/.npm automatically
-
-
+    
     - name: Install dependencies
       run: npm ci
-      shell: bash                            # REQUIRED in composite actions
+      shell: bash
