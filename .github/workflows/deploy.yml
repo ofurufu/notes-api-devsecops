@@ -216,7 +216,7 @@ jobs:
 
     environment:
       name: production
-      url: http://localhost:3000   # In real project: https://your-domain.com
+      url: https://notes-api-devsecops.onrender.com  # In real project: https://your-domain.com
 
     steps:
       - name: Checkout repository
@@ -288,6 +288,11 @@ jobs:
           echo "  Version:  ${{ needs.resolve-image.outputs.short-sha }}"
           echo "  Approved by: ${{ github.actor }}"
           echo "================================================"
+
+      - name: Smoke test — production
+        run: |
+         curl --fail --silent --max-time 30 --retry 5 \
+         https://notes-api-devsecops.onrender.com/health
 
       - name: Cleanup production container
         if: always()

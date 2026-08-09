@@ -287,6 +287,6 @@ This project was built as a hands-on DevSecOps learning exercise covering:
 
 ## Author
 
-**Ayodele Adewuyi** — AWS Cloud Engineer (in making)
+**Ayodele Adewuyi** — AWS Cloud Engineer (in the making)
 
 [GitHub](https://github.com/ofurufu)
